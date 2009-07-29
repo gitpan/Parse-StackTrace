@@ -1,2 +1,5 @@
+0.02 Tue Jul 28 2009
+	- Fix a packaging error (the inc/ directory was not being shipped)
+
 0.01 Fri Jun 10 2009
 	- First release. Supports Python and GDB stack traces.

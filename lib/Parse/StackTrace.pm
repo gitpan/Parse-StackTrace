@@ -5,7 +5,7 @@ use Parse::StackTrace::Exceptions;
 use Exception::Class;
 use Scalar::Util qw(blessed);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 has 'threads' => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
                   required => 1);
