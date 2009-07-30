@@ -3,6 +3,8 @@ use Moose;
 
 extends 'Parse::StackTrace';
 
+our $VERSION = '0.03';
+
 use constant HAS_TRACE => qr/^\s*File\s".+",/ms;
 use constant EXCEPTION_REGEX => qr/^\S*(?:Error|Exception):\s+.+$/;
 

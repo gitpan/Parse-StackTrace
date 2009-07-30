@@ -4,6 +4,8 @@ use Parse::StackTrace::Exceptions;
 
 extends 'Parse::StackTrace';
 
+our $VERSION = '0.03';
+
 use constant HAS_TRACE => qr/^#\d+(?:\s+(?:0x[A-Fa-f0-9]+ in )?(?:\S+\s+\(|\?\?))|(?:<signal handler called>)/m;
 use constant BIN_REGEX => qr/(?:Backtrace|Core) was generated (?:from|by) (?:`|')(.+)/;
                                         #1num   #2name

@@ -10,14 +10,15 @@ has 'lib_tag'         => (is => 'ro', isa => 'Str');
 has 'library'         => (is => 'ro', isa => 'Str');
 
 use constant FRAME_REGEX => qr/
-   #1level    #2loc
-^\#(\d+)\s+(?:(0x[A-Fa-f0-9]+)\s+in\s+)?
-#3func        #4libTag
-([^@\s]+)(?:@+([A-Z]+_[\d\.]+))?\s*
-  #5args                #6library
-\(([^\)]*)\)\s*(?:from\s(\S+))?
-           #7file  #8line
-\s*(?:at\s+([^:]+):(\d+))?/x;
+    ^\# (\d+)                          # 1 level
+    \s+ (?:(0x[A-Fa-f0-9]+)\s+in\s+)?  # 2 location
+        ([^\@\s]+)                     # 3 function
+        (?:\@+([A-Z]+_[\d\.]+))?       # 4 libtag
+    \s* \(([^\)]*)\)                   # 5 args
+    \s* (?:from\s(\S+))?               # 6 library
+    \s* (?:at\s+([^:]+)                # 7 file
+    :   (\d+))?                        # 8 line
+/x;
 
 sub parse {
     my ($class, %params) = @_;

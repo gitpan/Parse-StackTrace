@@ -1,3 +1,7 @@
+0.03 Wed Jul 29 2009
+	- GDB Frame Regex was failing on Perl 5.8.8 but not 5.8.9.
+	  Thanks to Somni on FreeNode's #perl for the fix!
+
 0.02 Tue Jul 28 2009
 	- Fix a packaging error (the inc/ directory was not being shipped)
 
