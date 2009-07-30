@@ -5,7 +5,7 @@ use Parse::StackTrace::Exceptions;
 use Exception::Class;
 use Scalar::Util qw(blessed);
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 has 'threads' => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
                   required => 1);
@@ -159,6 +159,14 @@ sub thread_number {
     my ($thread) = grep { defined $_->number and $_->number == $number }
                         @{ $self->threads };
     return $thread;
+}
+
+sub thread_with_crash {
+    my $self = shift;
+    foreach my $thread (@{ $self->threads }) {
+        return $thread if defined $thread->frame_with_crash;
+    }
+    return undef;
 }
 
 #####################
@@ -343,6 +351,11 @@ Note that if you want a particular-numbered thread, you should use
 this method, not L</threads>, because it's possible somebody could have
 a stack trace with the threads out of order, in which case C<< threads->[0] >>
 would not be "Thread 1".
+
+=head2 C<thread_with_crash>
+
+Returns the first thread where C<Parse::StackTrace::Thread/frame_with_crash>
+is defined, or C<undef> if no threads contain a C<frame_with_crash>.
 
 =head1 SEE ALSO
 

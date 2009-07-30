@@ -1,3 +1,6 @@
+0.04 Wed Jul 29 2009
+	+ Add the thread_with_crash method to Parse::StackTrace.
+
 0.03 Wed Jul 29 2009
 	- GDB Frame Regex was failing on Perl 5.8.8 but not 5.8.9.
 	  Thanks to Somni on FreeNode's #perl for the fix!
