@@ -374,3 +374,5 @@ No symbol table info available.
 #23 0x08067311 in ?? ()
 No symbol table info available.
 #0  0xffffe410 in __kernel_vsyscall ()
+
+Here is some text after the stack trace, just for kicks.

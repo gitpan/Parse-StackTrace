@@ -10,6 +10,7 @@ sub test_trace {
     my ($type, $file, $info) = @_;
     
     my $num_threads = $info->{'threads'};
+    my $num_lines   = $info->{'trace_lines'};
     my $get_thread  = $info->{'thread'};
     my $num_frames  = $info->{'frames'};
     my $crash_frame_num = $info->{'crash_frame'};
@@ -29,10 +30,14 @@ sub test_trace {
     is(scalar @{ $trace->threads }, $num_threads,
        "trace has $num_threads threads");
     
+    is(scalar @{ $trace->text_lines }, $num_lines, "trace has $num_lines lines")
+        or diag("Text: [" . $trace->text . ']');
+    
     my $thread;
     is($thread = $trace->thread_number($get_thread),
-       $trace->threads->[$get_thread - 1],
-       "thread_number($get_thread) returns the right thread");
+       $trace->threads->[$num_threads - $get_thread],
+       "thread_number($get_thread) returns the right thread")
+        or diag("Threads: " . join(', ', map($_->number, @{ $trace->threads })));
     
     ok(!$trace->thread_number($num_threads + 1),
        'there is no thread number ' . ($num_threads + 1));
@@ -48,7 +53,10 @@ sub test_trace {
     
     ok(!$thread->frame_number($num_frames),
        "there is no frame number $num_frames");
-    
+
+    is($thread, $trace->thread_with_crash,
+       'this thread is the thread_with_crash');
+
     my $crash_frame;
     ok($crash_frame = $thread->frame_with_crash, 'thread has crash frame');
     is($crash_frame->number, $crash_frame_num,

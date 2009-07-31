@@ -3,14 +3,10 @@ use Moose;
 
 extends 'Parse::StackTrace';
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 use constant HAS_TRACE => qr/^\s*File\s".+",/ms;
 use constant EXCEPTION_REGEX => qr/^\S*(?:Error|Exception):\s+.+$/;
-
-use constant BIN_REGEX => '';
-use constant THREAD_START => '';
-use constant IGNORE_LINES => ();
 
 sub thread_number {
     my ($self, $number) = @_;
@@ -21,8 +17,8 @@ sub thread_number {
 sub _handle_line {
     my $class = shift;
     my %params = @_;
-    my ($line, $current_thread, $lines, $debug) =
-        @params{qw(line thread lines debug)};
+    my ($line, $current_thread, $lines, $end, $debug) =
+        @params{qw(line thread lines end_line_number debug)};
     # If we have frames and run into the description of the exception,
     # then we're done parsing the trace.
     if (scalar @{ $current_thread->frames } and $line =~ EXCEPTION_REGEX) {
@@ -30,6 +26,7 @@ sub _handle_line {
         print STDERR "Thread Exception: $line\n" if $debug;
         # Don't parse anymore.
         @$lines = ();
+        $current_thread->ending_line($end);
         return $current_thread;
     }
     

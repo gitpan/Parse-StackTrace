@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use lib 't/lib';
-use Test::More tests => 33;
+use Test::More tests => 39;
 
 use Support qw(test_trace);
 
@@ -13,6 +13,7 @@ use constant TRACES => {
         frames  => 6,
         crash_frame => 0,
         description => 'Error: timed out',
+        trace_lines => 13,
     },
     # Frames split across lines
     'deskbar-bug-467629' => {
@@ -21,6 +22,7 @@ use constant TRACES => {
         frames  => 2,
         crash_frame => 0,
         description => 'TypeError: could not parse URI',
+        trace_lines => 7,
     },
 };
 

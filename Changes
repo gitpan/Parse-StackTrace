@@ -1,3 +1,9 @@
+0.05 Thu Jul 30 2009
+	+ Add the text and text_lines accessors to Parse::StackTrace.
+	- Make the "traces" accessor actually return threads in the order
+	  they were parsed. (It was returning them in numerical order
+	  instead.)
+
 0.04 Wed Jul 29 2009
 	+ Add the thread_with_crash method to Parse::StackTrace.
 

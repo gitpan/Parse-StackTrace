@@ -3,13 +3,20 @@ use 5.006;
 use Moose;
 use Parse::StackTrace::Exceptions;
 use Exception::Class;
+use List::Util qw(max min);
 use Scalar::Util qw(blessed);
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
-has 'threads' => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
-                  required => 1);
-has 'binary'  => (is => 'ro', isa => 'Str|Undef');
+has 'threads'    => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
+                     required => 1);
+has 'binary'     => (is => 'ro', isa => 'Str|Undef');
+has 'text_lines' => (is => 'ro', isa => 'ArrayRef[Str]', required => 1);
+
+# Defaults for StackTrace types that don't define these.
+use constant BIN_REGEX => '';
+use constant THREAD_START => '';
+use constant IGNORE_LINES => ();
 
 #####################
 # Parsing Functions #
@@ -47,7 +54,9 @@ sub _do_parse {
     my ($class, %params) = @_;
     my $text  = $params{text};
     my $debug = $params{debug};
-    if (!$text =~ $class->HAS_TRACE) {
+    
+    die "You must specify a value for the 'text' argument" if !defined $text;
+    if ($text !~ $class->HAS_TRACE) {
         Parse::StackTrace::Exception::NoTrace->throw(
             "This doesn't look like a stack trace."
         );
@@ -58,20 +67,10 @@ sub _do_parse {
         $binary = $1;
     }
 
-    my $threads = $class->_parse_text($text, $debug);
-    my $trace = $class->new(threads => $threads, binary => $binary);
+    my ($threads, $trace_lines) = $class->_parse_text($text, $debug);
+    my $trace = $class->new(threads => $threads, binary => $binary,
+                            text_lines => $trace_lines);
     return $trace;
-}
-
-sub _get_trace_start {
-    my ($class, $lines) = @_;
-    my $count = 0;
-    foreach my $line (@$lines) {
-        if ($line =~ $class->HAS_TRACE) {
-            return $count;
-        }
-        $count++;
-    }
 }
 
 sub _parse_text {
@@ -79,36 +78,65 @@ sub _parse_text {
    
     my @lines = split(/\r?\n/, $text);
     my @threads;
-    my $current_thread = $class->thread_class->new();
+    my $default_thread = $class->thread_class->new();
+    my $current_thread = $default_thread;
+    my $current_end_line = 0;
     print STDERR "Current Thread: Default\n" if $debug;
     while (scalar @lines) {
+        my $lines_start_size = scalar @lines;
         my $line = $class->_get_next_trace_line(\@lines);
-        print STDERR "Next Trace Line: [$line]\n" if $debug;
+        my $lines_read = $lines_start_size - scalar(@lines);
+        my $current_start_line = $current_end_line + 1;
+        $current_end_line += $lines_read;
+        print STDERR "Trace Line $current_start_line-$current_end_line: [$line]\n" if $debug;
         next if (trim($line) eq '' or grep($_ eq $line, $class->IGNORE_LINES));
         $current_thread = $class->_handle_line(
-            line => $line, thread => $current_thread,
-            threads => \@threads, debug => $debug, lines => \@lines);
+            start_line_number => $current_start_line,
+            end_line_number   => $current_end_line,
+            line    => $line,
+            thread  => $current_thread,
+            threads => \@threads,
+            debug   => $debug,
+            lines   => \@lines,
+        );
     }
     
     @threads = ($current_thread) if not @threads;
-    @threads = sort { ($a->number || 0) <=> ($b->number || 0) } @threads;
-    return \@threads;
+
+    my @thread_starts = $threads[0]->starting_line;
+    # Sometimes default_thread isn't in the final @threads, but if we parsed
+    # frames into it, then it should be considered part of the trace text.
+    if ($default_thread->has_starting_line) {
+        push(@thread_starts, $default_thread->starting_line);
+    }
+    my $trace_start = min(@thread_starts) - 1;
+    my $trace_end = $threads[$#threads]->ending_line - 1;
+    my @trace_lines = (split(/\r?\n/, $text))[$trace_start..$trace_end];
+
+    return (\@threads, \@trace_lines);
 }
 
 sub _handle_line {
     my ($class, %params) = @_;
-    my ($line, $current_thread, $threads, $debug) =
-        @params{qw(line thread threads debug)};
+    my ($line, $current_thread, $threads, $start, $end, $debug) =
+        @params{qw(line thread threads start_line_number end_line_number
+                   debug)};
         
     if ($class->THREAD_START and $line =~ $class->THREAD_START) {
-        $current_thread = $class->thread_class->new(number => $1,
-                                                    description => $2);
+        $current_thread = $class->thread_class->new(
+            number => $1, description => $2, starting_line => $start);
         push(@$threads, $current_thread);
         print STDERR "Current Thread: " . $current_thread->number . "\n"
             if $debug;
     }
     elsif ($line =~ $class->HAS_TRACE) {
         my $frame = $class->frame_class->parse(text => $line, debug => $debug);
+        # For the default thread, we have to set its starting line as soon
+        # as we parse a frame in it.
+        if (!$current_thread->has_starting_line) {
+            $current_thread->starting_line($start);
+        }
+        $current_thread->ending_line($end);
         $current_thread->add_frame($frame);
     }
     
@@ -116,11 +144,11 @@ sub _handle_line {
 }
 
 sub _get_next_trace_line {
-    my ($class, $lines) = @_;
+    my ($class, $lines, $trace_lines) = @_;
     my $line = shift @$lines;
     if ($line =~ $class->HAS_TRACE) {
         while (@$lines) {
-            my $next_line = $class->_get_next_frame_line($lines);
+            my $next_line = $class->_get_next_frame_line($lines, $trace_lines);
             last if not $next_line;
             $line = "$line $next_line";
         }
@@ -148,14 +176,13 @@ sub _get_next_frame_line {
 # Complex Accessors #
 #####################
 
+sub text {
+    my $self = shift;
+    return join("\n", @{ $self->text_lines });
+}
+
 sub thread_number {
     my ($self, $number) = @_;
-    # First check if the frame at that array position (minus one, because
-    # threads are numbered from 1) is the frame we want, as an optimization.    
-    my $try = $self->threads->[$number - 1];
-    if ($try && $try->number && $try->number == $number) {
-        return $try;
-    }
     my ($thread) = grep { defined $_->number and $_->number == $number }
                         @{ $self->threads };
     return $thread;
@@ -336,6 +363,15 @@ The threads will be in the array in the order that they were listed
 in the trace.
 
 There is always at least one thread in every trace.
+
+=head2 C<text>
+
+Returns the text of just the trace, with line endings converted to
+just CR. (That is, just C<\n>, never C<\r\n>.)
+
+=head2 C<text_lines>
+
+An arrayref containining the lines of just the trace, without line endings.
 
 =head1 INSTANCE METHODS
 

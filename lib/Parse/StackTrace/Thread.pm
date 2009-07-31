@@ -15,6 +15,10 @@ has 'frames' => (
 has 'number'      => (is => 'ro', isa => 'Int');
 has 'description' => (is => 'ro', isa => 'Str', default => '');
 
+has 'starting_line' => (is => 'rw', isa => 'Int',
+                        predicate => 'has_starting_line');
+has 'ending_line'   => (is => 'rw', isa => 'Int');
+
 sub frame_number {
     my ($self, $number) = @_;
     # First check if the frame at that array position is the frame

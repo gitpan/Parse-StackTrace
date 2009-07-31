@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use lib 't/lib';
-use Test::More tests => 22;
+use Test::More tests => 26;
 
 use Support qw(test_trace);
 
@@ -14,6 +14,7 @@ use constant TRACES => {
         frames  => 24,
         crash_frame => 3,
         description => 'Thread -1247730000 (LWP 5645)',
+        trace_lines => 343,
     },
     # Single Thread, Symbols, Signal Handler
     'gnumeric-bug-127364' => {
@@ -22,6 +23,7 @@ use constant TRACES => {
         frames  => 42,
         crash_frame => 5,
         description => 'Thread 16384 (LWP 9708)',
+        trace_lines => 835,
     },
 };
 
