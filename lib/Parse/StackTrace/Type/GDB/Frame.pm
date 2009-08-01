@@ -10,15 +10,31 @@ has 'lib_tag'         => (is => 'ro', isa => 'Str');
 has 'library'         => (is => 'ro', isa => 'Str');
 
 use constant FRAME_REGEX => qr/
-    ^\# (\d+)                          # 1 level
-    \s+ (?:(0x[A-Fa-f0-9]+)\s+in\s+)?  # 2 location
-        ([^\@\s]+)                     # 3 function
-        (?:\@+([A-Z]+_[\d\.]+))?       # 4 libtag
+    ^\# (\d+)                            # 1 level
+    \s+ (?:(0x[A-Fa-f0-9]+)\s+in\s+)?    # 2 location
+        (                                # 3 function
+            (?:[a-z\s\-]+?\s+(?:to|for)\s+)? # thunk, vtable, etc.
+            (?:bool\s+)?                     # cheap hack
+            [^\@\s]+?                        # actual function name
+            (?:<.+>(?:::[^\(\s]+)?)?
+            (?:\(.*\))?                    # parameter types
+            (?:\s+ type_info \s+ node)?
+        )
+        (?:\@+([\w\.]+))?              # 4 libtag
     \s* \(([^\)]*)\)                   # 5 args
     \s* (?:from\s(\S+))?               # 6 library
     \s* (?:at\s+([^:]+)                # 7 file
     :   (\d+))?                        # 8 line
 /x;
+
+# This is a strange frame format we get occasionally without a function.
+use constant FUNCTIONLESS_FRAME => qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+\(\)$/;
+
+# Sometimes people try to parse traces that don't contain parentheses for
+# the arguments, which are actually the key part of the regex above.
+# (Without them, some of the craziness doesn't work.) So for these
+# particular frames, we just grab what we can (the function, memory_loc, etc.)
+use constant PARENLESS_FRAME => qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+([^\(]+)$/;
 
 sub parse {
     my ($class, %params) = @_;
@@ -30,6 +46,12 @@ sub parse {
         %parsed = (number => $1, memory_location => $2,
                    function => $3, lib_tag => $4, args => $5,
                    library => $6, file => $7, line => $8);
+    }
+    elsif ($text =~ FUNCTIONLESS_FRAME) {
+        %parsed = (number => $1, memory_location => $2, function => '??');
+    }
+    elsif ($text =~ PARENLESS_FRAME) {
+        %parsed = (number => $1, memory_location => $2, function => $3);
     }
     elsif ($text =~ /^#(\d+)\s+(<signal handler called>)/) {
         %parsed = (number => $1, function => $2);

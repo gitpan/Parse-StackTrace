@@ -13,6 +13,7 @@ sub test_trace {
     my $num_lines   = $info->{'trace_lines'};
     my $get_thread  = $info->{'thread'};
     my $num_frames  = $info->{'frames'};
+    my $stack       = $info->{'stack'};
     my $crash_frame_num = $info->{'crash_frame'};
     my $description = $info->{'description'};
     
@@ -31,11 +32,15 @@ sub test_trace {
        "trace has $num_threads threads");
     
     is(scalar @{ $trace->text_lines }, $num_lines, "trace has $num_lines lines")
-        or diag("Text: [" . $trace->text . ']');
+        or diag("First Line: [" . $trace->text_lines->[0] . ']'
+                . "Last Line: [" . $trace->text_lines->[-1] . ']');
     
     my $thread;
+    my $thread_array_pos = defined $info->{thread_array_pos}
+                           ? $info->{thread_array_pos}
+                           : $num_threads - $get_thread;
     is($thread = $trace->thread_number($get_thread),
-       $trace->threads->[$num_threads - $get_thread],
+       $trace->threads->[$thread_array_pos],
        "thread_number($get_thread) returns the right thread")
         or diag("Threads: " . join(', ', map($_->number, @{ $trace->threads })));
     
@@ -43,10 +48,18 @@ sub test_trace {
        'there is no thread number ' . ($num_threads + 1));
     
     is(scalar @{ $thread->frames }, $num_frames,
-       "thread has $num_frames frames");
+       "thread has $num_frames frames")
+        or diag("Frames: " . join(', ', map { $_->number } @{ $thread->frames }));
+        
+    if (defined $stack) {
+        my @got_stack = map { $_->function } @{ $thread->frames };
+        is_deeply(\@got_stack, $stack, 'thread has the right function stack');
+    }
     
-    is($thread->description, $description,
-       "thread description is: $description");
+    if (defined $description) {
+        is($thread->description, $description,
+           "thread description is: $description");
+    }
     
     is($thread->frame_number(0), $thread->frames->[0],
        'frame_number(0) returns first frame');
@@ -54,13 +67,15 @@ sub test_trace {
     ok(!$thread->frame_number($num_frames),
        "there is no frame number $num_frames");
 
-    is($thread, $trace->thread_with_crash,
-       'this thread is the thread_with_crash');
+    if (defined $crash_frame_num) {
+        is($thread, $trace->thread_with_crash,
+           'this thread is the thread_with_crash');
 
-    my $crash_frame;
-    ok($crash_frame = $thread->frame_with_crash, 'thread has crash frame');
-    is($crash_frame->number, $crash_frame_num,
-       "crash frame is frame number $crash_frame_num");
+        my $crash_frame;
+        ok($crash_frame = $thread->frame_with_crash, 'thread has crash frame');
+        is($crash_frame->number, $crash_frame_num,
+           "crash frame is frame number $crash_frame_num");
+    }
 }
 
 # Stolen from Test::Pod::Coverage

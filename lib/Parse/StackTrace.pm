@@ -6,7 +6,7 @@ use Exception::Class;
 use List::Util qw(max min);
 use Scalar::Util qw(blessed);
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 has 'threads'    => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
                      required => 1);
@@ -15,8 +15,9 @@ has 'text_lines' => (is => 'ro', isa => 'ArrayRef[Str]', required => 1);
 
 # Defaults for StackTrace types that don't define these.
 use constant BIN_REGEX => '';
-use constant THREAD_START => '';
-use constant IGNORE_LINES => ();
+use constant IGNORE_LINES => {};
+
+our $WHITESPACE_ONLY = qr/^\s*$/;
 
 #####################
 # Parsing Functions #
@@ -34,13 +35,7 @@ sub parse {
         foreach my $type (@$types) {
             my $parser = $class->_class("Type::$type");
             $trace = eval { $parser->parse(@_) };
-            if (Exception::Class->caught('Parse::StackTrace::Exception::NoTrace')) {
-                next;
-            }
-            elsif (my $e = Exception::Class->caught) {
-                blessed $e ? $e->rethrow : die $e;
-            }
-            return $trace;
+            return $trace if $trace;
         }
         
         return undef;
@@ -57,9 +52,7 @@ sub _do_parse {
     
     die "You must specify a value for the 'text' argument" if !defined $text;
     if ($text !~ $class->HAS_TRACE) {
-        Parse::StackTrace::Exception::NoTrace->throw(
-            "This doesn't look like a stack trace."
-        );
+        return undef;
     }
     
     my $binary;
@@ -89,7 +82,7 @@ sub _parse_text {
         my $current_start_line = $current_end_line + 1;
         $current_end_line += $lines_read;
         print STDERR "Trace Line $current_start_line-$current_end_line: [$line]\n" if $debug;
-        next if (trim($line) eq '' or grep($_ eq $line, $class->IGNORE_LINES));
+        next if ($line =~ $WHITESPACE_ONLY or $class->_ignore_line($line));
         $current_thread = $class->_handle_line(
             start_line_number => $current_start_line,
             end_line_number   => $current_end_line,
@@ -118,37 +111,59 @@ sub _parse_text {
 
 sub _handle_line {
     my ($class, %params) = @_;
-    my ($line, $current_thread, $threads, $start, $end, $debug) =
+    my ($line, $current_thread, $threads, $start, $end, $lines, $debug) =
         @params{qw(line thread threads start_line_number end_line_number
-                   debug)};
-        
-    if ($class->THREAD_START and $line =~ $class->THREAD_START) {
+                   lines debug)};
+
+    if (my ($number, $description) = $class->_line_starts_thread($line)) {
         $current_thread = $class->thread_class->new(
-            number => $1, description => $2, starting_line => $start);
+            number => $number, description => $description,
+            starting_line => $start);
         push(@$threads, $current_thread);
         print STDERR "Current Thread: " . $current_thread->number . "\n"
             if $debug;
     }
     elsif ($line =~ $class->HAS_TRACE) {
-        my $frame = $class->frame_class->parse(text => $line, debug => $debug);
         # For the default thread, we have to set its starting line as soon
         # as we parse a frame in it.
         if (!$current_thread->has_starting_line) {
             $current_thread->starting_line($start);
         }
-        $current_thread->ending_line($end);
-        $current_thread->add_frame($frame);
+        
+        my $thread_end = $end;
+        # If the next line is ignored, it's still part of the thread
+        # in terms of its textual content, so we want to make the thread
+        # end on that line instead.
+        if ($lines->[0] and $class->_ignore_line($lines->[0])) {
+            $thread_end++;
+        }
+        $current_thread->ending_line($thread_end);
+
+        my $frame;
+        eval {
+            $frame = $class->frame_class->parse(text => $line, debug => $debug);
+        };
+        my $e;
+        if ($e = Exception::Class->caught('Parse::StackTrace::Exception::NotAFrame')) {
+            warn $e;
+        }
+        elsif ($e = Exception::Class->caught) {
+            blessed $e ? $e->rethrow : die $e;
+        }
+        else {
+            $current_thread->add_frame($frame);
+        }
     }
     
     return $current_thread;
 }
 
 sub _get_next_trace_line {
-    my ($class, $lines, $trace_lines) = @_;
+    my ($class, $lines) = @_;
     my $line = shift @$lines;
     if ($line =~ $class->HAS_TRACE) {
         while (@$lines) {
-            my $next_line = $class->_get_next_frame_line($lines, $trace_lines);
+            my $next_line = $class->_get_next_frame_line($lines);
             last if not $next_line;
             $line = "$line $next_line";
         }
@@ -163,13 +178,29 @@ sub _get_next_trace_line {
 sub _get_next_frame_line {
     my ($class, $lines) = @_;
     my $line = $lines->[0];
-    if (trim($line) eq '' or grep($_ eq $line, $class->IGNORE_LINES)
-        or $line =~ $class->HAS_TRACE
-        or ($class->THREAD_START and $line =~ $class->THREAD_START))
-    {
+    if ($class->_next_line_ends_frame($line)) {
         return undef
     }
     return shift @$lines
+}
+
+sub _next_line_ends_frame {
+    my ($class, $line) = @_;
+    if ($line =~ $WHITESPACE_ONLY or $class->_ignore_line($line)
+        or $line =~ $class->HAS_TRACE
+        or $class->_line_starts_thread($line))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+# By default we don't support threads.
+sub _line_starts_thread { return (); }
+
+sub _ignore_line {
+    my ($class, $line) = @_;
+    return grep($_ eq $line, $class->IGNORE_LINES) ? 1 : 0;
 }
 
 #####################
@@ -194,17 +225,6 @@ sub thread_with_crash {
         return $thread if defined $thread->frame_with_crash;
     }
     return undef;
-}
-
-#####################
-# Utility Functions #
-#####################
-    
-sub trim {
-    my ($string) = @_;
-    $string =~ s/\s+$//;
-    $string =~ s/^\s+//;
-    return $string;
 }
 
 ####################
@@ -275,11 +295,6 @@ you get from L</parse>.
 
 You access Frames by calling methods on Threads.
 
-=head1 EXCEPTIONS
-
-Parse::StackTrace uses L<Exception::Class> to throw errors. Each method
-will specify what exceptions it can throw.
-
 =head1 CLASS METHODS
 
 =head2 C<parse>
@@ -323,19 +338,6 @@ its parsing.
 
 An object that is a subclass of Parse::StackTrace, or C<undef> if no
 traces of any of the specified types were found in the list.
-
-=item B<Throws>
-
-C<Parse::StackTrace::Exception::NotAFrame> - If there is an error during
-parsing.
-
-C<Parse::StackTrace::Exception::NoTrace> - Thrown by subclass implementations
-of C<parse> when they don't detect any stack trace in the parsed text.
-However, when you call I<this> implementation of parse
-(C<< Parse::StackTrace->parse >>, not something like
-C<< Parse::StackTrace::Type::GDB->parse >>), it doesn't throw this
-exception--it just returns C<undef> when there are no traces of any type
-found.
 
 =back
 

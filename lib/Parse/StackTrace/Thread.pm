@@ -1,6 +1,9 @@
 package Parse::StackTrace::Thread;
 use Moose;
+use Moose::Util::TypeConstraints;
 use MooseX::AttributeHelpers;
+
+subtype 'Parse::StackTrace::BigInt' => as class_type('Math::BigInt');
 
 has 'frames' => (
     is => 'ro',
@@ -12,7 +15,9 @@ has 'frames' => (
         unshift => '_unshift_frame',
     },
 );
-has 'number'      => (is => 'ro', isa => 'Int');
+
+has 'number'      => (is => 'ro', isa => 'Int|Parse::StackTrace::BigInt',
+                      predicate => 'has_number');
 has 'description' => (is => 'ro', isa => 'Str', default => '');
 
 has 'starting_line' => (is => 'rw', isa => 'Int',

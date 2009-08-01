@@ -27,6 +27,17 @@ t/lib/Support.pm
 t/pod.t
 t/pod_coverage.t
 t/traces/gdb/ekiga-bug-364113
+t/traces/gdb/gnome-bug-10228
+t/traces/gdb/gnome-bug-20861
+t/traces/gdb/gnome-bug-2742
+t/traces/gdb/gnome-bug-28596
+t/traces/gdb/gnome-bug-33996
+t/traces/gdb/gnome-bug-580218
+t/traces/gdb/gnome-bug-580868
+t/traces/gdb/gnome-bug-581998
+t/traces/gdb/gnome-bug-586069
+t/traces/gdb/gnome-bug-586192
+t/traces/gdb/gnome-bug-589922
 t/traces/gdb/gnumeric-bug-127364
 t/traces/python/bugbot
 t/traces/python/bugbot-multiple

@@ -6,6 +6,7 @@ all_from 'lib/Parse/StackTrace.pm';
 requires 'List::Util';
 requires 'Scalar::Util';
 requires 'Exception::Class';
+requires 'Math::BigInt';
 requires 'Moose';
 requires 'MooseX::AttributeHelpers';
 

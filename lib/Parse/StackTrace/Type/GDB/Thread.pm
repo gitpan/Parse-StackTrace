@@ -6,10 +6,6 @@ extends 'Parse::StackTrace::Thread';
 sub add_frame {
     my $self = shift;
     my ($frame) = @_;
-    # Sometimes there is an extra frame 0 that appears at the end
-    # of the trace that doesn't need to be there, so we make sure
-    # we don't add it.
-    return if ($frame->number == 0 && $self->frame_number(0));
     $self->SUPER::add_frame(@_);
 }
 

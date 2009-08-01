@@ -1,3 +1,11 @@
+0.06 Sat Aug 1 2009
+	+ Tremendously improve GDB stack parsing (tested on thousands of recent
+	  traces from bugzilla.gnome.org).
+	+ Improve performance. As part of this, the module no longer
+	  throws exceptions as a regular part of its operation. (It
+	  still uses Exception::Class, but only internally and you
+	  should never need to worry about it.)
+
 0.05 Thu Jul 30 2009
 	+ Add the text and text_lines accessors to Parse::StackTrace.
 	- Make the "traces" accessor actually return threads in the order
