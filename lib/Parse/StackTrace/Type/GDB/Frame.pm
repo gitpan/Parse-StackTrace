@@ -9,57 +9,55 @@ has 'memory_location' => (is => 'ro', isa => 'Str');
 has 'lib_tag'         => (is => 'ro', isa => 'Str');
 has 'library'         => (is => 'ro', isa => 'Str');
 
-use constant FRAME_REGEX => qr/
-    ^\# (\d+)                            # 1 level
-    \s+ (?:(0x[A-Fa-f0-9]+)\s+in\s+)?    # 2 location
-        (                                # 3 function
-            (?:[a-z\s\-]+?\s+(?:to|for)\s+)? # thunk, vtable, etc.
-            (?:bool\s+)?                     # cheap hack
-            [^\@\s]+?                        # actual function name
-            (?:<.+>(?:::[^\(\s]+)?)?
-            (?:\(.*\))?                    # parameter types
-            (?:\s+ type_info \s+ node)?
-        )
+# This describes a valid function name.
+our $FUNCTION = qr/(?:[^\@]+?(?:\(.*\))?)|\S+/;
+
+our $FRAME_REGEX = qr/
+    ^\# (\d+)                          # 1 level
+    \s+ (?:(0x[A-Fa-f0-9]+)\s+in\s+)?  # 2 location
+        ($FUNCTION)                    # 3 function
         (?:\@+([\w\.]+))?              # 4 libtag
-    \s* \(([^\)]*)\)                   # 5 args
+    \s+ \(([^\)]*)\)                   # 5 args
     \s* (?:from\s(\S+))?               # 6 library
     \s* (?:at\s+([^:]+)                # 7 file
     :   (\d+))?                        # 8 line
 /x;
 
 # This is a strange frame format we get occasionally without a function.
-use constant FUNCTIONLESS_FRAME => qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+\(\)$/;
+our $FUNCTIONLESS_FRAME = qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+\(\)$/;
 
 # Sometimes people try to parse traces that don't contain parentheses for
 # the arguments, which are actually the key part of the regex above.
 # (Without them, some of the craziness doesn't work.) So for these
 # particular frames, we just grab what we can (the function, memory_loc, etc.)
-use constant PARENLESS_FRAME => qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+([^\(]+)$/;
+our $PARENLESS_FRAME = qr/^#(\d+)\s+(0x[A-Fa-f0-9]+)\s+in\s+($FUNCTION)$/;
 
 sub parse {
     my ($class, %params) = @_;
-    my $text = $params{'text'};
+    my $lines = $params{'lines'};
     my $debug = $params{'debug'};
-    my %parsed;
     
-    if ($text =~ FRAME_REGEX) {
+    my $text = join(' ', @$lines);
+
+    my %parsed; 
+    if ($text =~ $FRAME_REGEX) {
         %parsed = (number => $1, memory_location => $2,
                    function => $3, lib_tag => $4, args => $5,
                    library => $6, file => $7, line => $8);
     }
-    elsif ($text =~ FUNCTIONLESS_FRAME) {
+    elsif ($text =~ $FUNCTIONLESS_FRAME) {
         %parsed = (number => $1, memory_location => $2, function => '??');
     }
-    elsif ($text =~ PARENLESS_FRAME) {
+    elsif ($text =~ $PARENLESS_FRAME) {
         %parsed = (number => $1, memory_location => $2, function => $3);
     }
     elsif ($text =~ /^#(\d+)\s+(<signal handler called>)/) {
-        %parsed = (number => $1, function => $2);
+        %parsed = (number => $1, function => $2, is_crash => 1);
     }
     
     if (!%parsed) {
         Parse::StackTrace::Exception::NotAFrame->throw(
-            "Not a valid GDB stack frame: $text"
+            "Not a valid GDB stack frame: " . join("\n", @$lines)
         );
     }
     

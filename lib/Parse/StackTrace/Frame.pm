@@ -7,6 +7,7 @@ has 'number'   => (is => 'ro', isa => 'Int');
 has 'file'     => (is => 'ro', isa => 'Str');
 has 'line'     => (is => 'ro', isa => 'Int');
 has 'code'     => (is => 'ro', isa => 'Str');
+has 'is_crash' => (is => 'ro', isa => 'Bool');
 
 __PACKAGE__->meta->make_immutable;
 
@@ -75,6 +76,11 @@ The line number in L</file> where this function was called.
 =head2 C<code>
 
 The actual code on L<that line|/line> of L<that file|/file>.
+
+=head2 C<is_crash>
+
+True if this is the frame where we crashed. For example, in a GDB trace,
+C<is_crash> true if this is the frame where the signal handler was called.
 
 =head1 SEE ALSO
 

@@ -5,7 +5,7 @@ use Math::BigInt;
 
 extends 'Parse::StackTrace';
 
-our $VERSION = '0.06';
+our $VERSION = '0.08';
 
 our $WHITESPACE_ONLY = qr/^\s*$/;
 
@@ -14,7 +14,7 @@ use constant HAS_TRACE => qr/
     (?:
         (?:0x[A-Fa-f0-9]{4,}\s+in\b)      # 0xdeadbeef in
         |
-        (?:[A-Za-z]\S+\s+\()              # some_function_name
+        (?:[A-Za-z_\*]\S+\s+\()           # some_function_name
         |
         (?:<signal \s handler \s called>)
     )
@@ -25,6 +25,8 @@ use constant THREAD_START_REGEX => (
     qr/^Thread (\d+) \((.*)\):$/,
     qr/^\[Switching to Thread (.+) \((.+)\)\]$/,
 );
+
+use constant OPEN_PAREN_WITHOUT_CLOSE => qr/\s+\([^\)]*$/;
 
 use constant IGNORE_LINES => (
     'No symbol table info available.',
@@ -46,31 +48,52 @@ sub thread_number {
 
 # The most common parsing error during testing was that traces would be
 # malformed with extra newlines in the "args" section.
-sub _get_next_trace_line {
+sub _get_next_trace_block {
     my $self = shift;
-    my $line = $self->SUPER::_get_next_trace_line(@_);
-    # Check if the line contains an open-paren but no close-paren after it.
-    if ($line =~ /\([^\)]*$/) {
+    my $frame_lines = $self->SUPER::_get_next_trace_block(@_);
+    
+    my $frame_text = join(' ', @$frame_lines);
+    # Check if the trace contains an open-paren after a space, but no
+    # close-paren after it.
+    if ($frame_text =~ OPEN_PAREN_WITHOUT_CLOSE) {
         my ($lines) = @_;
         my $next_line = $lines->[0];
         
-        if (defined $next_line){
-            # If the next line is blank...
-            if ($next_line =~ $WHITESPACE_ONLY) {
-                # Then get rid of it and continue with the next line.
-                shift @$lines;
-                unshift(@$lines, $line);
-                return $self->_get_next_trace_line(@_);
+        # If the next line is blank...
+        if (defined $next_line and $next_line =~ $WHITESPACE_ONLY) {
+            # Then get rid of it and re-parse the block.
+            shift @$lines;
+            unshift(@$lines, @$frame_lines);
+            return $self->_get_next_trace_block(@_);
+        }
+        
+        # Often people will cut up parts of a trace, and the very
+        # last frame wil have an open-paren with no close paren.
+        # So, if the next line is an end to this frame (or an end to the whole
+        # block of text being parsed), then we just have
+        # a really bad trace that we should try to deal with anyway by
+        # closing the parens on the actual line where the open-paren happens.
+        if (!defined $next_line or $self->_next_line_ends_frame($next_line)) {
+            my @real_frame_lines;
+            
+            while (my $line = shift @$frame_lines) {
+                if ($line =~ OPEN_PAREN_WITHOUT_CLOSE) {
+                    $line .= ')';
+                    push(@real_frame_lines, $line);
+                    last;
+                }
+                push(@real_frame_lines, $line);
             }
-            # If the next line is an end to this frame, then we just have
-            # a really bad trace that we should try to deal with anyway by
-            # closing the parens.
-            if ($self->_next_line_ends_frame($next_line)) {
-                $line .= ')';
-            }
+            
+            # Put the remaining lines back into $lines, so that we don't
+            # think they're part of the trace.
+            unshift(@$lines, @$frame_lines);
+            
+            return \@real_frame_lines;
         }
     }
-    return $line;
+    
+    return $frame_lines;
 }
 
 # We also want to ignore any lines containing gdb commands.
@@ -87,10 +110,11 @@ sub _line_starts_thread {
     foreach my $re (THREAD_START_REGEX) {
         if ($line =~ $re) {
             my ($number, $desc) = ($1, $2);
-            if ($number =~ /^0x/) {
+            if ($number =~ /^0x/ or $number !~ /^\d+$/) {
                 # Greater than 0xffffffff needs to be a BigInt for portability.
-                if (length($number) > 10) {
-                    $number = Math::BigInt->new($number);
+                $number =~ s/^0x//;
+                if (length($number) > 8) {
+                    $number = Math::BigInt->new("0x$number");
                 }
                 else {
                     $number = hex($number);

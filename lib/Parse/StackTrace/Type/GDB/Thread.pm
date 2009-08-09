@@ -9,13 +9,6 @@ sub add_frame {
     $self->SUPER::add_frame(@_);
 }
 
-sub frame_with_crash {
-    my ($self) = @_;
-    my ($frame) = grep { $_->function eq '<signal handler called>' }
-                       @{ $self->frames };
-    return $frame;
-}
-
 __PACKAGE__->meta->make_immutable;
 
 1;

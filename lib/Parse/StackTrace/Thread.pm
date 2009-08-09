@@ -45,7 +45,8 @@ sub frames_with_function {
 
 sub frame_with_crash {
     my ($self) = @_;
-    return $self->frames->[0];
+    my ($frame) = grep { $_->is_crash } @{ $self->frames };
+    return $frame;
 }
 
 __PACKAGE__->meta->make_immutable;

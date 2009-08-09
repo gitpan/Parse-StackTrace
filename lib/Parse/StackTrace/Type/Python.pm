@@ -3,10 +3,15 @@ use Moose;
 
 extends 'Parse::StackTrace';
 
-our $VERSION = '0.06';
+our $VERSION = '0.08';
 
-use constant HAS_TRACE => qr/^\s*File\s".+",/ms;
-use constant EXCEPTION_REGEX => qr/^\S*(?:Error|Exception):\s+.+$/;
+use constant HAS_TRACE => qr/^\s*File\s".+"(?:,|\s+in)/ms;
+use constant EXCEPTION_REGEX => qr/
+    ^
+    (?:Exception \s Type:\s+)?   # Django Format
+    \S*(?:Error|Exception)       # Actual Exception
+    (?::\s+)|(?:\s+at\b)         # Colon (normal python) or "at" (Django)
+/x;
 
 sub thread_number {
     my ($self, $number) = @_;
@@ -14,36 +19,39 @@ sub thread_number {
     return undef;
 }
 
-sub _handle_line {
+sub _handle_block {
     my $class = shift;
     my %params = @_;
-    my ($line, $current_thread, $lines, $end, $debug) =
-        @params{qw(line thread lines end_line_number debug)};
-    # If we have frames and run into the description of the exception,
-    # then we're done parsing the trace.
-    if (scalar @{ $current_thread->frames } and $line =~ EXCEPTION_REGEX) {
-        $current_thread->{description} = $line;
-        print STDERR "Thread Exception: $line\n" if $debug;
+    my ($frame_lines, $current_thread, $lines, $end, $debug) =
+        @params{qw(frame_lines thread lines end_line_number debug)};
+    # If we run into the description of the exception, then we're done parsing
+    # the trace, provided that we've already parsed some frames.
+    my $first_line = $frame_lines->[0];
+    if (scalar @{ $current_thread->frames } and $first_line =~ EXCEPTION_REGEX) {
+        $current_thread->{description} = trim($first_line);
+        print STDERR "Thread Exception: $first_line\n" if $debug;
+        pop @$frame_lines;
         # Don't parse anymore.
         @$lines = ();
         $current_thread->ending_line($end);
         return $current_thread;
     }
     
-    return $class->SUPER::_handle_line(@_);
+    return $class->SUPER::_handle_block(@_);
 }
 
-sub _get_next_frame_line {
+sub _next_line_ends_frame {
     my $class = shift;
-    my ($lines) = @_;
-    my $line = $class->SUPER::_get_next_frame_line(@_);
-    # Don't include the exception line in a frame, and unshift it
-    # back onto the array for _handle_line to deal with.
-    if (defined $line and $line =~ EXCEPTION_REGEX) {
-        unshift(@$lines, $line);
-        return undef;
-    }
-    return $line;
+    my ($line) = @_;
+    return ($class->SUPER::_next_line_ends_frame(@_)
+            or $line =~ EXCEPTION_REGEX);
+}
+
+sub trim {
+    my $str = shift;
+    $str =~ s/^s*//;
+    $str =~ s/\s*$//;
+    return $str;
 }
 
 __PACKAGE__->meta->make_immutable;

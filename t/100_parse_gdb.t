@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use lib 't/lib';
-use Test::More tests => 134;
+use Test::More tests => 199;
 use Math::BigInt;
 
 use Support qw(test_trace);
@@ -42,7 +42,7 @@ use constant TRACES => {
         frames  => 50,
         trace_lines => 58,
     },
-    # Contains weird <blah, blah>::blah function syntax (Objective-C?)
+    # Contains weird <blah, blah>::blah function syntax (C++)
     'gnome-bug-33996' => {
         threads => 1,
         thread => 1,
@@ -91,7 +91,7 @@ use constant TRACES => {
     },
     # Enormous trace, contains stuff like "non-virtual thunk to" as part of
     # functions. Also has () immediately after the function name to denote
-    # what the parameter types are for the function, for one frame.
+    # what the parameter types are for the C++ function, for one frame.
     'gnome-bug-580218' => {
         threads => 10,
         thread  => 6,
@@ -110,7 +110,7 @@ use constant TRACES => {
     # a function without a ::something after it.
     'gnome-bug-580868' => {
         threads => 2,
-        thread  => Math::BigInt->new('139913600169808'),
+        thread  => Math::BigInt->new('0x7f402c6ff750'),
         frames  => 13,
         description => 'LWP 22946',
         trace_lines => 102,
@@ -188,7 +188,7 @@ use constant TRACES => {
     # Contains frames that have been edited to lack parentheses
     'gnome-bug-586192' => {
         threads => 1,
-        thread  => Math::BigInt->new('140593057438032'),
+        thread  => Math::BigInt->new('0x7fde5f3f1950'),
         frames  => 12,
         trace_lines => 16,
         thread_array_pos => 0,
@@ -207,6 +207,89 @@ use constant TRACES => {
             gck_ssh_private_key_parse
         )],
     },
+    # Ends in a frame that has an open-paren with no close-paren.
+    'gnome-bug-579416' => {
+        threads => 2,
+        thread  => 1,
+        frames  => 17,
+        trace_lines => 105,
+        stack => [qw(
+            __kernel_vsyscall
+            __lll_lock_wait
+            _L_lock_752
+            __pthread_mutex_lock
+            gst_object_get_name
+            ??
+            PyObject_Repr
+            PyString_Format
+            string_mod
+            binary_op1
+            binary_op
+            PyEval_EvalFrameEx
+            fast_function
+            call_function
+            PyEval_EvalFrameEx
+            PyEval_EvalCodeEx
+            PyEval_EvalCode
+        )],
+    },
+    # Contains "operator new" as a function name.
+    'gnome-bug-538866' => {
+        threads => 10,
+        thread  => 3,
+        frames  => 15,
+        trace_lines => 382,
+    },
+    # Objective C frames like -[NSView function_name]
+    'gnome-bug-578811' => {
+        threads => 1,
+        thread  => 1,
+        frames  => 9,
+        trace_lines => 15,
+        stack => [
+            '-[NSView setFrameSize:]',
+            '-[NSView setFrame:]',
+            '-[NSWindow setContentView:]',
+            '-[GstGLNSWindow initWithContentRect:styleMask:backing:defer:screen:gstWin:]',
+            'gst_gl_window_new',
+            'gst_gl_display_thread_create_context',
+            'g_thread_create_proxy',
+            '_pthread_start',
+            'thread_start',
+        ],
+    },
+    # Contains a crazy function name: wxvault!??0Cwxvault@@QAE@XZ
+    'gnome-bug-565375' => {
+        threads => 1,
+        thread  => 1,
+        frames  => 150,
+        trace_lines => 160,
+    },
+    # Contains a bunch of frames in the default thread, and then nothing
+    # in a thread that comes after that.
+    'gnome-bug-583460' => {
+        threads => 1,
+        thread  => 1,
+        frames  => 35,
+        trace_lines => 35,
+    },
+    # Contains a thread with an id in hex without 0x in front of it.
+    'gnome-bug-589747' => {
+        threads => 17,
+        thread  => Math::BigInt->new('0x4ae9c280a'),
+        thread_array_pos => 0,
+        frames  => 17,
+        trace_lines => 84,
+    },
+    # Contains frames without memory locations, including functions
+    # that start with _.
+    'gnome-bug-585454' => {
+        threads => 21,
+        thread  => 4,
+        frames  => 12,
+        trace_lines => 247,
+    },
+    
 };
 
 foreach my $file (sort keys %{ TRACES() }) {

@@ -6,7 +6,7 @@ use Exception::Class;
 use List::Util qw(max min);
 use Scalar::Util qw(blessed);
 
-our $VERSION = '0.06';
+our $VERSION = '0.08';
 
 has 'threads'    => (is => 'ro', isa => 'ArrayRef[Parse::StackTrace::Thread]',
                      required => 1);
@@ -34,7 +34,7 @@ sub parse {
         my $trace;
         foreach my $type (@$types) {
             my $parser = $class->_class("Type::$type");
-            $trace = eval { $parser->parse(@_) };
+            $trace = $parser->parse(@_);
             return $trace if $trace;
         }
         
@@ -77,16 +77,27 @@ sub _parse_text {
     print STDERR "Current Thread: Default\n" if $debug;
     while (scalar @lines) {
         my $lines_start_size = scalar @lines;
-        my $line = $class->_get_next_trace_line(\@lines);
+        
+        my $frame_lines = $class->_get_next_trace_block(\@lines);
+        
         my $lines_read = $lines_start_size - scalar(@lines);
         my $current_start_line = $current_end_line + 1;
         $current_end_line += $lines_read;
-        print STDERR "Trace Line $current_start_line-$current_end_line: [$line]\n" if $debug;
-        next if ($line =~ $WHITESPACE_ONLY or $class->_ignore_line($line));
-        $current_thread = $class->_handle_line(
+        
+        if ($debug) {
+            my $joined_lines = join("\n", @$frame_lines);
+            print STDERR "Trace Line(s) $current_start_line-$current_end_line:",
+                         " [$joined_lines]\n";
+        }
+        
+        next if (scalar(@$frame_lines) == 1
+                 and ($frame_lines->[0] =~ $WHITESPACE_ONLY
+                      or $class->_ignore_line($frame_lines->[0])));
+
+        $current_thread = $class->_handle_block(
             start_line_number => $current_start_line,
             end_line_number   => $current_end_line,
-            line    => $line,
+            frame_lines       => $frame_lines,
             thread  => $current_thread,
             threads => \@threads,
             debug   => $debug,
@@ -94,7 +105,10 @@ sub _parse_text {
         );
     }
     
-    @threads = ($current_thread) if not @threads;
+    # Don't include any threads that don't have frames.
+    @threads = grep { scalar @{ $_->frames } } @threads;
+    
+    @threads = ($default_thread) if not @threads;
 
     my @thread_starts = $threads[0]->starting_line;
     # Sometimes default_thread isn't in the final @threads, but if we parsed
@@ -103,19 +117,19 @@ sub _parse_text {
         push(@thread_starts, $default_thread->starting_line);
     }
     my $trace_start = min(@thread_starts) - 1;
-    my $trace_end = $threads[$#threads]->ending_line - 1;
+    my $trace_end = $threads[-1]->ending_line - 1;
     my @trace_lines = (split(/\r?\n/, $text))[$trace_start..$trace_end];
 
     return (\@threads, \@trace_lines);
 }
 
-sub _handle_line {
+sub _handle_block {
     my ($class, %params) = @_;
-    my ($line, $current_thread, $threads, $start, $end, $lines, $debug) =
-        @params{qw(line thread threads start_line_number end_line_number
+    my ($frame_lines, $current_thread, $threads, $start, $end, $lines, $debug) =
+        @params{qw(frame_lines thread threads start_line_number end_line_number
                    lines debug)};
 
-    if (my ($number, $description) = $class->_line_starts_thread($line)) {
+    if (my ($number, $description) = $class->_line_starts_thread($frame_lines->[0])) {
         $current_thread = $class->thread_class->new(
             number => $number, description => $description,
             starting_line => $start);
@@ -123,7 +137,7 @@ sub _handle_line {
         print STDERR "Current Thread: " . $current_thread->number . "\n"
             if $debug;
     }
-    elsif ($line =~ $class->HAS_TRACE) {
+    elsif ($frame_lines->[0] =~ $class->HAS_TRACE) {
         # For the default thread, we have to set its starting line as soon
         # as we parse a frame in it.
         if (!$current_thread->has_starting_line) {
@@ -141,14 +155,15 @@ sub _handle_line {
 
         my $frame;
         eval {
-            $frame = $class->frame_class->parse(text => $line, debug => $debug);
+            $frame = $class->frame_class->parse(lines => $frame_lines,
+                                                debug => $debug);
         };
         my $e;
         if ($e = Exception::Class->caught('Parse::StackTrace::Exception::NotAFrame')) {
             warn $e;
         }
         elsif ($e = Exception::Class->caught) {
-            blessed $e ? $e->rethrow : die $e;
+            (blessed $e and $e->isa('Exception::Class')) ? $e->rethrow : die $e;
         }
         else {
             $current_thread->add_frame($frame);
@@ -158,18 +173,18 @@ sub _handle_line {
     return $current_thread;
 }
 
-sub _get_next_trace_line {
+sub _get_next_trace_block {
     my ($class, $lines) = @_;
-    my $line = shift @$lines;
-    if ($line =~ $class->HAS_TRACE) {
+    my @frame_lines = (shift @$lines);
+    if ($frame_lines[0] =~ $class->HAS_TRACE) {
         while (@$lines) {
             my $next_line = $class->_get_next_frame_line($lines);
             last if not $next_line;
-            $line = "$line $next_line";
+            push(@frame_lines, $next_line);
         }
     }
     
-    return $line;
+    return \@frame_lines;
 }
 
 # Returns the next line only if it's a *fragment* of a stack frame.
@@ -426,8 +441,10 @@ one block of text. (This will be the list-context return of L</parse>.)
 
 =head1 BUGS
 
-This module has currently received only limited testing, so it might
-die or fail on certain unexpected input.
+There are no known issues with this module. It has received extensive
+testing, and it should be considered stable.
+
+Any bugs found should be reported to the author by email.
 
 =head1 AUTHOR
 

@@ -25,7 +25,15 @@ sub test_trace {
     my $trace;
     my $class = "Parse::StackTrace::Type::$type";
     use_ok($class);
-    isa_ok($trace = $class->parse(text => $trace_text, debug => $ENV{'PS_DEBUG'}),
+    
+    my $debug;
+    if (my $ps_debug = $ENV{'PS_DEBUG'}) {
+        if ($ps_debug == 1 or $ps_debug eq $file) {
+            $debug = 1;
+        }
+    }
+    
+    isa_ok($trace = $class->parse(text => $trace_text, debug => $debug),
            $class, $file);
     
     is(scalar @{ $trace->threads }, $num_threads,
@@ -75,6 +83,12 @@ sub test_trace {
         ok($crash_frame = $thread->frame_with_crash, 'thread has crash frame');
         is($crash_frame->number, $crash_frame_num,
            "crash frame is frame number $crash_frame_num");
+        
+        # For Python
+        if (my $error_loc = $info->{error_location}) {
+            is($crash_frame->error_location, $error_loc,
+               "crash frame has the right error_location");
+        }
     }
 }
 

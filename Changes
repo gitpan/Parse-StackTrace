@@ -1,3 +1,18 @@
+0.08 Sat Aug 8 2009
+	- The GDB parser wasn't recognizing frames without memory locations
+	  whose names started with an underscore or asterisk.
+	- Allow for hex thread ids that don't start with 0x.
+	+ Add the is_crash accessor to frames.
+
+0.07 Sun Aug 2 2009
+	+ The module has now parsed hundreds of thousands of traces from
+	  bugzila.gnome.org without throwing any significant errors.
+	  This release can be considered stable.
+	+ Support Django tracebacks for the Python parser.
+	+ Add the "error_location" accessor to Python frames,
+	  which shows what code character the eror happened at for
+	  SyntaxError exceptions.
+
 0.06 Sat Aug 1 2009
 	+ Tremendously improve GDB stack parsing (tested on thousands of recent
 	  traces from bugzilla.gnome.org).
